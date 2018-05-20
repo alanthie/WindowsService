@@ -1,8 +1,7 @@
-#include "stdafx.h"
-
 #include <iostream>
 #include <string>
 #include <Windows.h>
+#include <winsvc.h>
 #include <functional>
 
 using FunctionServe = std::function<void()>;
@@ -33,21 +32,20 @@ namespace Windows
 	}
 
 
-
-
 	/**
 	Service
 	*/
 	class Service
 	{
 	private:
-		const wchar_t* serviceName;
-		const wchar_t* displayName;
+		const char* serviceName;
+		const char* displayName;
 		DWORD serviceStartType;
-		const wchar_t* serviceDependencies;
-		const wchar_t* serviceAccount;
-		const wchar_t* servicePassword;
+		const char* serviceDependencies;
+		const char* serviceAccount;
+		const char* servicePassword;
 		FunctionServe serve;
+		FunctionServe stop;
 
 		void CleanUp(SC_HANDLE schSCManager, SC_HANDLE schService);
 
@@ -60,31 +58,32 @@ namespace Windows
 		static VOID WINAPI ServiceCtrlHandler(DWORD CtrlCode);
 		static DWORD WINAPI ServiceWorkerThread(LPVOID lpParam);
 
-
-
 	public:
 		
 		Service(
-			const wchar_t* serviceName,
-			const wchar_t* displayName,
+			const char* serviceName,
+			const char* displayName,
 			DWORD serviceStartType,
-			const wchar_t* serviceDependencies,
-			const wchar_t* serviceAccount,
-			const wchar_t* servicePassword,
-			FunctionServe serve);
+			const char* serviceDependencies,
+			const char* serviceAccount,
+			const char* servicePassword,
+			FunctionServe serve,
+			FunctionServe stop);
+
 		~Service();
 		int Install();
 		int Uninstall();
 
 		static int Main(
-			const wchar_t* serviceName,
-			const wchar_t* displayName,
+			const char* serviceName,
+			const char* displayName,
 			DWORD serviceStartType,
-			const wchar_t* serviceDependencies,
-			const wchar_t* serviceAccount,
-			const wchar_t* servicePassword,
+			const char* serviceDependencies,
+			const char* serviceAccount,
+			const char* servicePassword,
 			FunctionServe serve,
+			FunctionServe stop,
 			int argc,
-			wchar_t *argv[]);
+			char *argv[]);
 	};
 }

@@ -1,20 +1,22 @@
+//
+//
 #include "stdafx.h"
-
 #include "WindowsService.h"
 
-Windows::Service* Windows::Service::pService = NULL;
-SERVICE_STATUS Windows::Service::g_ServiceStatus = { 0 };
-SERVICE_STATUS_HANDLE Windows::Service::g_StatusHandle = NULL;
-HANDLE Windows::Service::g_ServiceStopEvent = INVALID_HANDLE_VALUE;
+Windows::Service*		Windows::Service::pService = NULL;
+SERVICE_STATUS			Windows::Service::g_ServiceStatus = { 0 };
+SERVICE_STATUS_HANDLE	Windows::Service::g_StatusHandle = NULL;
+HANDLE					Windows::Service::g_ServiceStopEvent = INVALID_HANDLE_VALUE;
 
 Windows::Service::Service(
-	const wchar_t* serviceName,
-	const wchar_t* displayName,
+	const char* serviceName,
+	const char* displayName,
 	DWORD serviceStartType,
-	const wchar_t* serviceDependencies,
-	const wchar_t* serviceAccount,
-	const wchar_t* servicePassword,
-	FunctionServe serve)
+	const char* serviceDependencies,
+	const char* serviceAccount,
+	const char* servicePassword,
+	FunctionServe serve,
+	FunctionServe stop)
 {
 	this->serviceName = serviceName;
 	this->displayName = displayName;
@@ -23,37 +25,37 @@ Windows::Service::Service(
 	this->serviceAccount = serviceAccount;
 	this->servicePassword = servicePassword;
 	this->serve = serve;
+	this->stop = stop;
 }
 
 Windows::Service::~Service()
 {
-
 }
 
 /**
 install service to Windows Service
 */
-
 int Windows::Service::Install()
 {
-	wchar_t szPath[MAX_PATH];
+	 char szPath[MAX_PATH];
 	SC_HANDLE schSCManager = NULL;
 	SC_HANDLE schService = NULL;
 
 	if (GetModuleFileName(NULL, szPath, ARRAYSIZE(szPath)) == 0)
 	{
-		wprintf(L"GetModuleFileName Error: 0x%08lx\n", GetLastError());
+		DWORD dw = GetLastError();
+		std::cerr << "Error GetModuleFileName code=" << dw << std::endl;
 		CleanUp(schSCManager, schService);
 		return EXIT_FAILURE;
 	}
 
 	// Open the local default service control manager database
-	schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT |
-		SC_MANAGER_CREATE_SERVICE);
+	schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE);
 	if (schSCManager == NULL)
 	{
-		wprintf(L"OpenSCManager Error: 0x%08lx\n", GetLastError());
+		DWORD dw = GetLastError();
 		CleanUp(schSCManager, schService);
+		std::cerr << "Error OpenSCManager code=" << dw << std::endl;
 		return EXIT_FAILURE;
 	}
 
@@ -61,27 +63,29 @@ int Windows::Service::Install()
 	int status = EXIT_FAILURE;
 	schService = CreateService(
 		schSCManager,                   // SCManager database
-		serviceName,                 // Name of service
-		displayName,                 // Name to display
+		serviceName,					// Name of service
+		displayName,					// Name to display
 		SERVICE_QUERY_STATUS,           // Desired access
 		SERVICE_WIN32_OWN_PROCESS,      // Service type
-		serviceStartType,                    // Service start type
-		SERVICE_ERROR_NORMAL,		     // Error control type
+		serviceStartType,				// Service start type
+		SERVICE_ERROR_NORMAL,			// Error control type
 		szPath,                         // Service's binary
 		NULL,                           // No load ordering group
 		NULL,                           // No tag identifier
-		serviceDependencies,                // Dependencies
-		serviceAccount,                     // Service running account
-		servicePassword                     // Password of the account
+		serviceDependencies,			// Dependencies
+		serviceAccount,					// Service running account
+		servicePassword					// Password of the account
 	);
+
 	if (schService == NULL)
 	{
-		wprintf(L"CreateService Error 0x%08lx\n", GetLastError());
+		DWORD dw = GetLastError();
+		std::cerr << "Error CreateService code=" << dw << std::endl;
 		status = EXIT_FAILURE;
 	}
 	else
 	{
-		wprintf(L"%s Installed.\n", serviceName);
+		std::cerr << "Service installed " << serviceName << std::endl;
 		status = EXIT_SUCCESS;
 	}
 
@@ -92,7 +96,6 @@ int Windows::Service::Install()
 /**
 uninstall service from Windows Service
 */
-
 int Windows::Service::Uninstall()
 {
 	SC_HANDLE schSCManager = NULL;
@@ -103,32 +106,33 @@ int Windows::Service::Uninstall()
 	schSCManager = OpenSCManager(NULL, NULL, SC_MANAGER_CONNECT);
 	if (schSCManager == NULL)
 	{
-		wprintf(L"OpenSCManager Error: 0x%08lx\n", GetLastError());
+		DWORD dw = GetLastError();
 		CleanUp(schSCManager, schService);
+		std::cerr << "Error OpenSCManager code=" << dw << std::endl;
 		return EXIT_FAILURE;
 	}
 
 	// Open the service with delete, stop, and query status permissions
-	schService = OpenService(schSCManager, serviceName, SERVICE_STOP |
-		SERVICE_QUERY_STATUS | DELETE);
+	schService = OpenService(schSCManager, serviceName, SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE);
 	if (schService == NULL)
 	{
-		wprintf(L"OpenService Error: 0x%08lx\n", GetLastError());
+		DWORD dw = GetLastError();
 		CleanUp(schSCManager, schService);
+		std::cerr << "Error OpenService code=" << dw << std::endl;
 		return EXIT_FAILURE;
 	}
 
 	// Try to stop the service
 	if (ControlService(schService, SERVICE_CONTROL_STOP, &ssSvcStatus))
 	{
-		wprintf(L"Stopping %s.", serviceName);
+		std::cerr << "Stopping % " << serviceName << ".";
 		Sleep(1000);
 
 		while (QueryServiceStatus(schService, &ssSvcStatus))
 		{
 			if (ssSvcStatus.dwCurrentState == SERVICE_STOP_PENDING)
 			{
-				wprintf(L".");
+				std::cerr << ".";
 				Sleep(1000);
 			}
 			else break;
@@ -136,12 +140,12 @@ int Windows::Service::Uninstall()
 
 		if (ssSvcStatus.dwCurrentState == SERVICE_STOPPED)
 		{
-			wprintf(L"\n%s Stopped.\n", serviceName);
+			std::cerr << "Service Stopped " << serviceName << std::endl;
 		}
 		else
 		{
-			wprintf(L"\n%s cannot stop.\n", serviceName);
 			CleanUp(schSCManager, schService);
+			std::cerr << "Service cannot stop " << serviceName << std::endl;
 			return EXIT_FAILURE;
 		}
 	}
@@ -150,14 +154,16 @@ int Windows::Service::Uninstall()
 	int status = EXIT_SUCCESS;
 	if (!DeleteService(schService))
 	{
-		wprintf(L"DeleteService Error: 0x%08lx\n", GetLastError());
+		DWORD dw = GetLastError();
+		std::cout << "Error DeleteService code=" << dw << std::endl;
 		status = EXIT_FAILURE;
 	}
 	else
 	{
-		wprintf(L"%s Removed.\n", serviceName);
 		status = EXIT_SUCCESS;
+		std::cout << "Service Removed " << serviceName << std::endl;
 	}
+
 	CleanUp(schSCManager, schService);
 	return status;
 }
@@ -166,7 +172,6 @@ int Windows::Service::Uninstall()
 /**
 cleanup resources
 */
-
 void Windows::Service::CleanUp(SC_HANDLE schSCManager, SC_HANDLE schService)
 {
 	if (schSCManager)
@@ -181,17 +186,17 @@ void Windows::Service::CleanUp(SC_HANDLE schSCManager, SC_HANDLE schService)
 	}
 }
 
-
 int Windows::Service::Main(
-	const wchar_t* serviceName,
-	const wchar_t* displayName,
-	DWORD serviceStartType,
-	const wchar_t* serviceDependencies,
-	const wchar_t* serviceAccount,
-	const wchar_t* servicePassword,
+	const char* serviceName,
+	const char* displayName,
+	DWORD /*serviceStartType*/,
+	const char* serviceDependencies,
+	const char* serviceAccount,
+	const char* servicePassword,
 	FunctionServe serve,
+	FunctionServe stop,
 	int argc,
-	wchar_t *argv[])
+	char *argv[])
 {
 	if (!pService)
 	{
@@ -202,22 +207,22 @@ int Windows::Service::Main(
 			serviceDependencies,
 			serviceAccount,
 			servicePassword,
-			serve);
+			serve,
+			stop);
 	}
 
 	if (pService)
 	{
 		int status = 0;
-		if ((argc > 1) && ((*argv[1] == L'-' || (*argv[1] == L'/'))))
+		if ((argc > 1) && ((*argv[1] == '-' || (*argv[1] == '/'))))
 		{
-			if (_wcsicmp(L"install", argv[1] + 1) == 0)
+			if (_stricmp("install", argv[1] + 1) == 0)
 			{
-
 				// Install the service when the command is 
 				// "-install" or "/install".
 				status = pService->Install();
 			}
-			else if (_wcsicmp(L"remove", argv[1] + 1) == 0)
+			else if (_stricmp("remove", argv[1] + 1) == 0)
 			{
 				// Uninstall the service when the command is 
 				// "-remove" or "/remove".
@@ -229,8 +234,8 @@ int Windows::Service::Main(
 		{
 			SERVICE_TABLE_ENTRY ServiceTable[] =
 			{
-				{ (LPWSTR)pService->serviceName, (LPSERVICE_MAIN_FUNCTION)ServiceMain },
-			{ NULL, NULL }
+				{ (LPSTR)pService->serviceName, (LPSERVICE_MAIN_FUNCTION)ServiceMain },
+				{ NULL, NULL }
 			};
 
 			if (StartServiceCtrlDispatcher(ServiceTable) == FALSE)
@@ -243,9 +248,8 @@ int Windows::Service::Main(
 	return EXIT_FAILURE;
 }
 
-VOID WINAPI Windows::Service::ServiceMain(DWORD argc, LPTSTR *argv)
+VOID WINAPI Windows::Service::ServiceMain(DWORD /*argc*/, LPTSTR*)
 {
-	DWORD Status = E_FAIL;
 	g_StatusHandle = RegisterServiceCtrlHandler(pService->serviceName, (LPHANDLER_FUNCTION)ServiceCtrlHandler);
 	if (g_StatusHandle == NULL)
 	{
@@ -266,7 +270,6 @@ VOID WINAPI Windows::Service::ServiceMain(DWORD argc, LPTSTR *argv)
 		{
 			return;
 		}
-
 
 		// Create stop event to wait on later.
 		g_ServiceStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
@@ -300,9 +303,11 @@ VOID WINAPI Windows::Service::ServiceMain(DWORD argc, LPTSTR *argv)
 
 			// Wait until our worker thread exits effectively signaling that the service needs to stop
 			WaitForSingleObject(hThread, INFINITE);
+
 			/*
 			* Perform any cleanup tasks
 			*/
+			//pService->stop();
 
 			CloseHandle(g_ServiceStopEvent);
 
@@ -319,6 +324,7 @@ VOID WINAPI Windows::Service::ServiceMain(DWORD argc, LPTSTR *argv)
 		return;
 	}
 }
+
 VOID WINAPI Windows::Service::ServiceCtrlHandler(DWORD CtrlCode)
 {
 	switch (CtrlCode)
@@ -330,6 +336,7 @@ VOID WINAPI Windows::Service::ServiceCtrlHandler(DWORD CtrlCode)
 		/*
 		* Perform tasks neccesary to stop the service here
 		*/
+		pService->stop();
 
 		pService->g_ServiceStatus.dwControlsAccepted = 0;
 		pService->g_ServiceStatus.dwCurrentState = SERVICE_STOP_PENDING;
@@ -350,7 +357,8 @@ VOID WINAPI Windows::Service::ServiceCtrlHandler(DWORD CtrlCode)
 		break;
 	}
 }
-DWORD WINAPI Windows::Service::ServiceWorkerThread(LPVOID lpParam)
+
+DWORD WINAPI Windows::Service::ServiceWorkerThread(LPVOID /*lpParam*/)
 {
 	//  Periodically check if the service has been requested to stop
 	while (WaitForSingleObject(pService->g_ServiceStopEvent, 0) != WAIT_OBJECT_0)
@@ -358,7 +366,6 @@ DWORD WINAPI Windows::Service::ServiceWorkerThread(LPVOID lpParam)
 		/*
 		* Perform main service function here
 		*/
-
 		if (pService)
 		{
 			pService->serve();
@@ -367,6 +374,7 @@ DWORD WINAPI Windows::Service::ServiceWorkerThread(LPVOID lpParam)
 		//  Simulate some work by sleeping
 		Sleep(3000);
 	}
+
 	return ERROR_SUCCESS;
 }
 
