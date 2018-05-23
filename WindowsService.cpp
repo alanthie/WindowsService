@@ -307,8 +307,8 @@ VOID WINAPI Windows::Service::ServiceMain(DWORD /*argc*/, LPTSTR*)
 			/*
 			* Perform any cleanup tasks
 			*/
-			//pService->stop();
 
+			CloseHandle(hThread);
 			CloseHandle(g_ServiceStopEvent);
 
 			g_ServiceStatus.dwControlsAccepted = 0;
